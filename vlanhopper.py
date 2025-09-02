@@ -413,18 +413,30 @@ def check_requirements():
         print("    Run with: sudo python3 vlan_hopping_tester.py")
         return False
     
-    # Check for required tools
-    required_tools = ['ip', 'ethtool']
+    # Check for required tools with appropriate flags
+    required_checks = [
+        ('ip', ['-V']),  # iproute2 uses -V for version
+        ('ethtool', ['--version'])
+    ]
     missing_tools = []
     
-    for tool in required_tools:
+    for tool, version_args in required_checks:
         try:
-            subprocess.run([tool, '--version'], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
+            result = subprocess.run([tool] + version_args, 
+                                  capture_output=True, text=True, timeout=5)
+            # For 'ip', even error code might be OK if it shows version info
+            if tool == 'ip' and ('iproute2' in result.stderr or 'ip utility' in result.stderr or result.returncode == 0):
+                continue
+            elif result.returncode == 0:
+                continue
+            else:
+                missing_tools.append(tool)
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
             missing_tools.append(tool)
     
     if missing_tools:
         print(f"[-] Missing required tools: {', '.join(missing_tools)}")
+        print("    Install with: sudo apt update && sudo apt install iproute2 ethtool")
         return False
     
     return True
@@ -473,7 +485,10 @@ WARNING: Only use on networks you own or have written authorization to test.
     
     # Check requirements
     if not check_requirements():
-        sys.exit(1)
+        print("[!] Warning: Some tools may not be available, but continuing...")
+        print("    If you encounter errors, install missing tools with:")
+        print("    sudo apt install iproute2 ethtool")
+        time.sleep(3)
     
     # List interfaces if requested
     if args.list_interfaces:
